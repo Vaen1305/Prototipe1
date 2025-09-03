@@ -2,20 +2,42 @@ using UnityEngine;
 
 public class MovementDrone : MonoBehaviour
 {
-    public Transform[] waypoints;
-    private int currentWaypoint = 0;
+    [Header("Movement Modes")]
+    public bool useFixedAltitude = true; 
 
-    public float moveSpeed = 8f;
-    public float rotationSpeed = 5f;
-    public float hoverHeight = 4f;
-    public float heightAdjustSpeed = 3f;
+    private float moveSpeed;
+    private float rotationSpeed;
+    private float hoverHeight;
+    private float heightAdjustSpeed;
 
+    [Header("Waypoint Behavior")]
     public bool useRandomWaypoints = true;
     public float waypointReachDistance = 1.5f;
+
+    private Transform[] waypoints;
+    private int currentWaypoint = 0;
 
     private Rigidbody rb;
     private Vector3 targetPosition;
     private Vector3 targetDirection;
+
+    public void SetWaypoints(Transform[] newWaypoints)
+    {
+        waypoints = newWaypoints;
+        if (waypoints != null && waypoints.Length > 0)
+        {
+            currentWaypoint = 0;
+            UpdateTargetPosition();
+        }
+    }
+
+    public void SetMovementStats(float newMoveSpeed, float newRotationSpeed, float newHoverHeight, float newHeightAdjustSpeed)
+    {
+        moveSpeed = newMoveSpeed;
+        rotationSpeed = newRotationSpeed;
+        hoverHeight = newHoverHeight;
+        heightAdjustSpeed = newHeightAdjustSpeed;
+    }
 
     private void Start()
     {
@@ -23,68 +45,89 @@ public class MovementDrone : MonoBehaviour
         rb.drag = 2f;
         rb.angularDrag = 4f;
 
-        if (waypoints.Length > 0)
+        if (waypoints != null && waypoints.Length > 0)
         {
             if (useRandomWaypoints)
             {
                 currentWaypoint = Random.Range(0, waypoints.Length);
             }
-            targetPosition = GetWaypointPosition(waypoints[currentWaypoint]);
+            UpdateTargetPosition();
         }
         else
         {
-            targetPosition = transform.position + Vector3.forward * 5f;
+            targetPosition = transform.position;
         }
     }
 
     private void FixedUpdate()
     {
-        UpdateTargetDirection();
+        if (waypoints == null || waypoints.Length == 0) return;
+
+        UpdateWaypointLogic();
         MoveDrone();
-        AdjustHeight();
+
+        if (useFixedAltitude)
+        {
+            AdjustHeight();
+        }
     }
 
-    private void UpdateTargetDirection()
+    private void UpdateWaypointLogic()
     {
-        if (waypoints.Length > 0)
-        {
-            if (Vector3.Distance(transform.position, targetPosition) < waypointReachDistance)
-            {
-                if (useRandomWaypoints)
-                {
-                    SelectRandomWaypoint();
-                }
-                else
-                {
-                    currentWaypoint = (currentWaypoint + 1) % waypoints.Length;
-                }
+        Vector3 positionOnPlane = new Vector3(transform.position.x, 0, transform.position.z);
+        Vector3 targetOnPlane = new Vector3(targetPosition.x, 0, targetPosition.z);
 
-                targetPosition = GetWaypointPosition(waypoints[currentWaypoint]);
+        if (Vector3.Distance(positionOnPlane, targetOnPlane) < waypointReachDistance)
+        {
+            if (useRandomWaypoints)
+            {
+                SelectRandomWaypoint();
             }
+            else
+            {
+                currentWaypoint = (currentWaypoint + 1) % waypoints.Length;
+            }
+            UpdateTargetPosition();
         }
 
         targetDirection = (targetPosition - transform.position).normalized;
     }
 
+    private void UpdateTargetPosition()
+    {
+        if (waypoints == null || waypoints.Length == 0) return;
+        
+        Transform currentWaypointTransform = waypoints[currentWaypoint];
+
+        if (useFixedAltitude)
+        {
+            targetPosition = new Vector3(currentWaypointTransform.position.x, hoverHeight, currentWaypointTransform.position.z);
+        }
+        else
+        {
+            targetPosition = currentWaypointTransform.position;
+        }
+    }
+
     private void SelectRandomWaypoint()
     {
         if (waypoints.Length <= 1) return;
-
         int newWaypoint;
-        do
-        {
-            newWaypoint = Random.Range(0, waypoints.Length);
-        }
+        do { newWaypoint = Random.Range(0, waypoints.Length); }
         while (newWaypoint == currentWaypoint);
-
         currentWaypoint = newWaypoint;
     }
 
     private void MoveDrone()
     {
-        Vector3 horizontalForce = targetDirection * moveSpeed;
-        horizontalForce.y = 0;
-        rb.AddForce(horizontalForce);
+        Vector3 force = targetDirection * moveSpeed;
+
+        if (useFixedAltitude)
+        {
+            force.y = 0;
+        }
+        
+        rb.AddForce(force);
 
         if (targetDirection != Vector3.zero)
         {
@@ -92,26 +135,22 @@ public class MovementDrone : MonoBehaviour
             rb.rotation = Quaternion.Slerp(rb.rotation, targetRotation, rotationSpeed * Time.fixedDeltaTime);
         }
     }
-
+    
     private void AdjustHeight()
     {
-        float heightDifference = hoverHeight - transform.position.y;
-
-        if (Mathf.Abs(heightDifference) > 0.1f)
+        if (Physics.Raycast(transform.position, Vector3.down, out RaycastHit hit))
         {
-            float verticalForce = Mathf.Sign(heightDifference) * heightAdjustSpeed;
+            float distanceToGround = hit.distance;
+            float heightError = hoverHeight - distanceToGround;
+            
+            float verticalForce = heightError * heightAdjustSpeed;
             rb.AddForce(Vector3.up * verticalForce);
         }
     }
 
-    private Vector3 GetWaypointPosition(Transform waypoint)
-    {
-        return new Vector3(waypoint.position.x, hoverHeight, waypoint.position.z);
-    }
-
     public void SetTargetPosition(Vector3 newPosition)
     {
-        targetPosition = new Vector3(newPosition.x, hoverHeight, newPosition.z);
+        targetPosition = newPosition;
     }
 
     public void SetRandomMovement(bool random)

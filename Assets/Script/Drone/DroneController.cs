@@ -3,23 +3,26 @@ using System.Linq;
 
 public class DroneController : MonoBehaviour
 {
-    [Header("DetectionRange")]
+    [Header("Detection Ranges")]
     public float detectionRange = 15f;
     public float chaseRange = 20f;
     public float attackRange = 5f;
     
-    [Header("Behavior")]
+    [Header("Behavior Settings")]
     public float patrolCheckInterval = 0.5f;
     public float alertDuration = 3f;
     public float attackRate = 1f;
     public int attackDamage = 10;
 
-    [Header("Movement")]
+    [Header("Movement Settings")]
     public Transform[] waypoints;
     public float moveSpeed = 8f;
     public float rotationSpeed = 5f;
     public float hoverHeight = 4f;
     public float heightAdjustSpeed = 3f;
+
+    [Header("Chase Settings")]
+    public float chaseSmoothFactor = 3f; 
 
     public Transform Player { get; private set; }
     public Health PlayerHealth { get; private set; }
@@ -36,11 +39,8 @@ public class DroneController : MonoBehaviour
     {
         if (Movement)
         {
-            Movement.waypoints = waypoints;
-            Movement.moveSpeed = moveSpeed;
-            Movement.rotationSpeed = rotationSpeed;
-            Movement.hoverHeight = hoverHeight;
-            Movement.heightAdjustSpeed = heightAdjustSpeed;
+            Movement.SetWaypoints(waypoints);
+            Movement.SetMovementStats(moveSpeed, rotationSpeed, hoverHeight, heightAdjustSpeed);
         }
     }
 
@@ -69,7 +69,7 @@ public class DroneController : MonoBehaviour
         if (players.Length == 0) return null;
 
         Transform closestPlayer = players
-            .OrderBy(Tar => Vector3.Distance(transform.position, Tar.transform.position))
+            .OrderBy(p => Vector3.Distance(transform.position, p.transform.position))
             .FirstOrDefault()?.transform;
 
         if (closestPlayer && Vector3.Distance(transform.position, closestPlayer.position) > detectionRange)
@@ -91,17 +91,20 @@ public class DroneController : MonoBehaviour
     
     public void UpdateChase()
     {
-        if(Movement && Player)
+        if (Player == null) return;
+
+        if (Movement && Movement.enabled)
         {
-            if(Movement.enabled) Movement.enabled = false;
-            
-            transform.position = Vector3.MoveTowards(transform.position, Player.position, moveSpeed * Time.deltaTime);
-            Vector3 directionToPlayer = (Player.position - transform.position).normalized;
-            if (directionToPlayer != Vector3.zero)
-            {
-                Quaternion targetRotation = Quaternion.LookRotation(directionToPlayer);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
-            }
+            Movement.enabled = false;
+        }
+        
+        transform.position = Vector3.Lerp(transform.position, Player.position, chaseSmoothFactor * Time.deltaTime);
+
+        Vector3 directionToPlayer = (Player.position - transform.position).normalized;
+        if (directionToPlayer != Vector3.zero)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(directionToPlayer);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
         }
     }
     
